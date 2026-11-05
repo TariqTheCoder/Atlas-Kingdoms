@@ -197,7 +197,6 @@
         assetManifest: <%- assetManifest %>,
         cdnBase: <%- cdnBase %>,
         gameEnv: <%- gameEnv %>,<%- typeof cluster !== "undefined" && cluster ? "\n        cluster: " + cluster + "," : "" %><%- typeof instanceLetter !== "undefined" && instanceLetter ? "\n        instanceLetter: " + instanceLetter + "," : "" %>
-        turnstileSiteKey: <%- turnstileSiteKey %>,
         jwtAudience: <%- jwtAudience %>,<%- typeof stripePublishableKey !== "undefined" && stripePublishableKey ? "\n        stripePublishableKey: " + stripePublishableKey + "," : "" %><%- typeof faroCollectorUrl !== "undefined" && faroCollectorUrl ? "\n        faroCollectorUrl: " + faroCollectorUrl + "," : "" %><%- typeof instanceId !== "undefined" && instanceId ? "\n        instanceId: " + instanceId + "," : "" %><%- typeof serverHost !== "undefined" && serverHost ? "\n        serverHost: " + serverHost + "," : "" %><%- typeof siteHost !== "undefined" && siteHost ? "\n        siteHost: " + siteHost + "," : "" %>
       };
       // Set here rather than from the bundle so the first paint already has the
@@ -222,8 +221,7 @@
 
     <script>
       // Poki allows no third-party scripts in its frame, so the ad, analytics
-      // and CrazyGames scripts below load only off Poki (Turnstile still
-      // loads: multiplayer joins need its token). Same check as
+      // and CrazyGames scripts below load only off Poki. Same check as
       // PokiSDK.isOnPoki(), which also keeps a positive answer in
       // sessionStorage for in-frame navigations.
       window.__onPoki = (function () {
@@ -282,13 +280,6 @@
         );
       }
     </script>
-
-    <!-- Cloudflare Turnstile -->
-    <script
-      src="https://challenges.cloudflare.com/turnstile/v0/api.js"
-      async
-      defer
-    ></script>
 
     <!-- AdShield -->
     <!-- prettier-ignore -->
@@ -389,72 +380,18 @@
       ></div>
     </div>
 
-    <!-- LEFT SIDEBAR MENU -->
-
-    <div
-      id="mobile-menu-backdrop"
-      class="lg:hidden! in-[.in-game]:hidden hidden pointer-events-none [&.open]:block [&.open]:pointer-events-auto [&.open]:fixed [&.open]:inset-0 [&.open]:bg-black/60 [&.open]:z-[40000] transition-opacity"
-      role="presentation"
-      aria-hidden="true"
-    ></div>
-
-    <mobile-nav-bar
-      id="sidebar-menu"
-      class="peer [.in-game_&]:hidden z-[40001] fixed left-0 top-0 h-full flex flex-col justify-start overflow-visible bg-black/70 backdrop-blur-xl border-r border-white/10 transition-transform duration-500 ease-out transform -translate-x-full w-[70%] [&.open]:translate-x-0 lg:hidden"
-      role="dialog"
-      data-i18n-aria-label="main.menu"
-    ></mobile-nav-bar>
-
     <!-- MAIN CONTENT AREA -->
     <div
       class="in-[.in-game]:hidden flex-1 basis-full min-w-0 min-h-dvh in-[.page-open]:min-h-0 in-[.page-open]:overflow-hidden relative pt-[var(--top-ad-pad,0px)] in-[.page-open]:pt-[var(--top-ad-height,0px)] transition-[margin] duration-500 ease-out will-change-[margin-left] flex flex-col"
     >
-      <!-- Desktop Top Bar (sticky so it stays visible while the page scrolls,
-           offset below the header ad when one is showing; static while an
-           inline page is open, when the content area is padded below the ad
-           instead and nothing scrolls) -->
-      <desktop-nav-bar
-        class="sticky top-[var(--top-ad-height,0px)] z-[60] in-[.page-open]:static in-[.page-open]:compact:hidden"
-      ></desktop-nav-bar>
-
-      <div
-        id="turnstile-container"
-        class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-99999"
-      ></div>
-
-      <homepage-promos></homepage-promos>
-      <banned-modal></banned-modal>
-      <marketing-consent-toast></marketing-consent-toast>
-      <purchase-nudge-modal></purchase-nudge-modal>
-
       <!-- Main container with responsive padding -->
       <main-layout class="contents">
         <play-page class="contents"></play-page>
-        <matchmaking-modal
-          id="page-matchmaking"
-          inline
-          class="hidden w-full h-full page-content relative z-50"
-        ></matchmaking-modal>
-        <news-modal
-          id="page-news"
-          inline
-          class="hidden w-full h-full page-content relative z-50"
-        ></news-modal>
         <single-player-modal
           id="page-single-player"
           inline
           class="hidden w-full h-full page-content relative z-50"
         ></single-player-modal>
-        <host-lobby-modal
-          id="page-host-lobby"
-          inline
-          class="hidden w-full h-full page-content relative z-50"
-        ></host-lobby-modal>
-        <join-lobby-modal
-          id="page-join-lobby"
-          inline
-          class="hidden w-full h-full page-content relative z-50"
-        ></join-lobby-modal>
         <store-modal
           id="page-item-store"
           inline
