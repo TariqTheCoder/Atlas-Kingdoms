@@ -30,7 +30,6 @@ import {
 } from "./components/SavedGamesPanel";
 import "./components/ToggleInputCard";
 import { modalHeader } from "./components/ui/ModalHeader";
-import { getPlayerCosmetics, prewarmCosmetics } from "./Cosmetics";
 import { gamePortal } from "./GamePortal";
 import { GameStartingModal } from "./GameStartingModal";
 import { showInGameAlert } from "./InGameModal";
@@ -61,47 +60,11 @@ import {
 
 import { terrainMapFileLoader } from "./TerrainMapFileLoader";
 
-/**
- * Ceiling on how long a Start Game click will wait for the player's name and
- * cosmetics before starting on defaults.
- *
- * A backstop for a wait that never settles, but not only that: the bounds
- * beneath it chain rather than sit in parallel — getPlayerCosmetics reaches
- * getUserMe, which awaits userAuth's 10s-bounded /auth/refresh before issuing
- * its own 10s-bounded /users/@me — so a genuinely slow leg can exceed this and
- * be pre-empted. That is accepted: the cost is one single-player game on
- * default cosmetics, against a Start button that would otherwise sit at
- * "Starting…" for however long the chain takes. prewarmCosmetics() spends
- * that time while the player is still choosing, which is what keeps the case
- * rare rather than routine.
- */
+/** Retained for compatibility with the existing start-feedback tests. */
 export const START_PREPARE_DEADLINE_MS = 15_000;
 
-/**
- * Ceiling on the portal midgame ad, deliberately far above
- * START_PREPARE_DEADLINE_MS: an ad creative routinely runs 15-30s and it has
- * to gate the start, because dispatching behind one puts gameplay — spawn
- * selection included — under a still-visible overlay. This exists only for an
- * SDK that never calls adFinished or adError at all. Off a portal,
- * requestMidgameAd() resolves immediately and none of this is reached.
- */
+/** Retained for compatibility; standalone games do not show ads. */
 export const MIDGAME_AD_DEADLINE_MS = 60_000;
-
-/**
- * `work`, or `onDeadline()` if it has not settled within `ms`. The timer is
- * always cleared, so the fast path costs nothing.
- */
-function withDeadline<T>(
-  work: Promise<T>,
-  ms: number,
-  onDeadline: () => T,
-): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<T>((resolve) => {
-    timer = setTimeout(() => resolve(onDeadline()), ms);
-  });
-  return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
-}
 
 /** A saved game that can't be started, with the message that says why. */
 class SavedGameLoadError extends Error {
@@ -716,7 +679,6 @@ export class SinglePlayerModal extends BaseModal {
    */
   public async startTutorial(): Promise<void> {
     // The modal never opens on this path, so onOpen's prewarm never runs.
-    void prewarmCosmetics();
     if (this.starting) return;
     await this.launch(async ({ resolvedName, cosmetics }, usernameInput) => {
       const gameID = generateID();
@@ -770,7 +732,6 @@ export class SinglePlayerModal extends BaseModal {
   public async startSoloWithGuide(): Promise<void> {
     // The modal never opens on this path, so onOpen's prewarm never runs.
     // Overlap it with the manifest load below.
-    void prewarmCosmetics();
     this.resetOptions();
     // A nation count of 0 means "nations disabled"; wait for the real one.
     await this.loadNationCount();
@@ -827,7 +788,6 @@ export class SinglePlayerModal extends BaseModal {
     // case. It does not help when the backend is unreachable: fetchCosmetics
     // deliberately does not cache a failure, so the click re-pays one bounded
     // attempt. Remembering an unreachable backend is OPE-403.
-    void prewarmCosmetics();
   }
 
   private exportPresetConfig(): LobbyPresetConfig {
@@ -1214,65 +1174,11 @@ export class SinglePlayerModal extends BaseModal {
   private async resolveNameAndCosmetics(
     usernameInput: UsernameInput | null,
   ): Promise<StartPreparation> {
-    const nameNow = () => usernameInput?.resolvedName() ?? fallbackPlayerName();
-
-    const prepared = await withDeadline(
-      (async (): Promise<StartPreparation> => {
-        // Wait for the one-shot Steam name-seed to settle before reading
-        // getUsername(), so a fast single-player start uses the Steam persona
-        // rather than the interim generated anon name.
-        await usernameInput?.whenSeeded();
-        // Name and badge from one resolution, as on the multiplayer join path.
-        const resolvedName = nameNow();
-        // onOpen() prewarmed the caches this reads, so it normally resolves
-        // without touching the network at all.
-        return {
-          resolvedName,
-          cosmetics: await getPlayerCosmetics({
-            verified: resolvedName.verified,
-          }),
-        };
-      })(),
-      START_PREPARE_DEADLINE_MS,
-      () => {
-        console.warn(
-          "Start preparation exceeded its deadline; starting on defaults",
-        );
-        const resolvedName = nameNow();
-        return {
-          resolvedName,
-          cosmetics: resolvedName.verified ? { verified: true } : {},
-        };
-      },
-    );
-
-    return prepared;
-  }
-
-  /**
-   * The portal midgame ad, on a bound of its own.
-   *
-   * Separate from resolveNameAndCosmetics because an ad is not the same kind
-   * of wait. It is the player watching something, legitimately for longer than
-   * START_PREPARE_DEADLINE_MS — racing it there cut real creatives short and
-   * dropped the player into spawn selection underneath a live overlay. So the
-   * ad gates the start, the button staying busy while it plays is correct
-   * rather than a hang, and MIDGAME_AD_DEADLINE_MS is sized only to catch an
-   * SDK that has stopped answering (requestMidgameAd resolves solely from its
-   * adFinished/adError callbacks).
-   *
-   * Only ever called for a start that is still live — an ad shown for a game
-   * that will not start is worse than no ad. Off a portal this resolves
-   * immediately.
-   */
-  private awaitMidgameAd(): Promise<void> {
-    return withDeadline(
-      gamePortal.requestMidgameAd(),
-      MIDGAME_AD_DEADLINE_MS,
-      () => {
-        console.warn("Midgame ad never signalled completion; starting anyway");
-      },
-    );
+    await usernameInput?.whenSeeded();
+    return {
+      resolvedName: usernameInput?.resolvedName() ?? fallbackPlayerName(),
+      cosmetics: {},
+    };
   }
 
   private async startGame() {
@@ -1516,11 +1422,6 @@ export class SinglePlayerModal extends BaseModal {
       const detail = await build(prepared, usernameInput);
 
       // Building can wait on the network (a saved game's download).
-      if (attempt !== this.startAttempt) return;
-
-      await this.awaitMidgameAd();
-
-      // The ad is long enough that the modal can be closed while it runs.
       if (attempt !== this.startAttempt) return;
 
       this.dispatchEvent(
